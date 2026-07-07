@@ -91,6 +91,12 @@ impl UniFracTree {
             }
         }
 
+        // The root's own pendant length is part of every tip-to-root distance
+        // (skbio folds root_bl into `_tip_distances`), so seed it before the
+        // accumulation carries it down; the mask below zeroes the root itself.
+        let root_slot = n_nodes - 1;
+        tip_root_distance[root_slot] = branch_length[root_slot];
+
         // Preorder accumulation of root-distance (parent precedes child), masked
         // to leave only tips nonzero, per skbio's `_tip_distances`.
         for slot in (0..n_nodes).rev() {
@@ -332,6 +338,67 @@ mod tests {
                 assert_eq!(dm.data[i * n + j], dm.data[j * n + i]);
             }
         }
+    }
+
+    fn root_bl_tree_uv(mode: Mode) -> f64 {
+        let tree = Tree::from_newick("((A:1.0,B:2.0):0.5,C:3.0)root:9.0;").unwrap();
+        let cfg = Config { mode, delim: '\t' };
+        let mut out = Vec::new();
+        run(
+            std::io::Cursor::new("feature\tx\ty\nA\t1\t0\nB\t0\t2\nC\t2\t1\n"),
+            &mut out,
+            &tree,
+            &cfg,
+        )
+        .unwrap();
+        let s = String::from_utf8(out).unwrap();
+        s.lines()
+            .nth(1)
+            .unwrap()
+            .split('\t')
+            .nth(2)
+            .unwrap()
+            .parse()
+            .unwrap()
+    }
+
+    // The root's stored branch length must enter the weighted-normalized
+    // denominator (skbio folds root_bl into every tip-to-root distance).
+    #[test]
+    fn weighted_normalized_folds_root_branch_length() {
+        assert!(
+            (root_bl_tree_uv(Mode::WeightedNormalized) - 0.122_302_158_273_381_3).abs() < 1e-12
+        );
+    }
+
+    #[test]
+    fn root_branch_length_leaves_other_modes_untouched() {
+        assert!((root_bl_tree_uv(Mode::Weighted) - 2.833_333_333_333_333).abs() < 1e-12);
+        assert!((root_bl_tree_uv(Mode::Unweighted) - 0.193_548_387_096_774_2).abs() < 1e-12);
+    }
+
+    #[test]
+    fn duplicate_feature_rejected() {
+        let tree = Tree::from_newick("((A:1.0,B:2.0):0.5,C:3.0)root;").unwrap();
+        let cfg = Config {
+            mode: Mode::WeightedNormalized,
+            delim: '\t',
+        };
+        let mut out = Vec::new();
+        let table = "feature\tx\ty\nA\t1\t0\nB\t0\t2\nA\t2\t1\n";
+        assert!(run(std::io::Cursor::new(table), &mut out, &tree, &cfg).is_err());
+    }
+
+    #[test]
+    fn duplicate_sample_rejected() {
+        let tree = Tree::from_newick("((A:1.0,B:2.0):0.5,C:3.0)root;").unwrap();
+        let cfg = Config {
+            mode: Mode::Weighted,
+            delim: '\t',
+        };
+        let mut out = Vec::new();
+        let table = "feature\tx\tx\nA\t1\t0\nB\t0\t2\nC\t2\t1\n";
+        assert!(run(std::io::Cursor::new(table), &mut out, &tree, &cfg).is_err());
     }
 
     #[test]

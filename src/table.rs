@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::io::BufRead;
 
 use rsomics_common::{Result, RsomicsError};
@@ -42,8 +43,17 @@ impl CountTable {
                 "header has no sample columns (need feature-ID column + ≥1 sample)".into(),
             ));
         }
+        let mut seen_samples = HashSet::with_capacity(sample_names.len());
+        for name in &sample_names {
+            if !seen_samples.insert(name.as_str()) {
+                return Err(RsomicsError::InvalidInput(format!(
+                    "duplicate sample name '{name}' in the header; sample IDs must be unique"
+                )));
+            }
+        }
         let n = sample_names.len();
         let mut feature_ids = Vec::new();
+        let mut seen_features = HashSet::new();
         let mut columns: Vec<Vec<f64>> = vec![Vec::new(); n];
         for (row_idx, line) in lines.enumerate() {
             let line = line.map_err(RsomicsError::Io)?;
@@ -84,6 +94,12 @@ impl CountTable {
                     row_idx + 2
                 )));
             }
+            if !seen_features.insert(feature.clone()) {
+                return Err(RsomicsError::InvalidInput(format!(
+                    "duplicate feature '{feature}' at row {}; all taxa must be unique",
+                    row_idx + 2
+                )));
+            }
             feature_ids.push(feature);
         }
         Ok(CountTable {
@@ -119,5 +135,15 @@ mod tests {
     #[test]
     fn ragged_row_errors() {
         assert!(CountTable::parse("feature\tA\tB\nOTU1\t4\n".as_bytes(), '\t').is_err());
+    }
+
+    #[test]
+    fn duplicate_feature_errors() {
+        assert!(CountTable::parse("feature\tA\nOTU1\t4\nOTU1\t5\n".as_bytes(), '\t').is_err());
+    }
+
+    #[test]
+    fn duplicate_sample_errors() {
+        assert!(CountTable::parse("feature\tS1\tS1\nOTU1\t4\t0\n".as_bytes(), '\t').is_err());
     }
 }
