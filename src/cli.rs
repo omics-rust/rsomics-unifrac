@@ -82,7 +82,9 @@ impl Tool for Cli {
                 RsomicsError::InvalidInput(format!("{}: {e}", self.input.display()))
             })?))
         };
-        let mut out: Box<dyn Write> = if self.output == "-" {
+        let mut out: Box<dyn Write> = if self.output == "-" && self.common.json {
+            Box::new(BufWriter::new(std::io::sink()))
+        } else if self.output == "-" {
             Box::new(BufWriter::new(std::io::stdout().lock()))
         } else {
             Box::new(BufWriter::new(

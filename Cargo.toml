@@ -1,6 +1,6 @@
 [package]
 name = "rsomics-unifrac"
-version = "0.1.1"
+version = "0.1.2"
 description = "Pairwise UniFrac phylogenetic beta-diversity (unweighted / weighted / weighted-normalized) from a feature count table + a rooted Newick tree — scikit-bio beta_diversity equivalent, value-exact"
 edition = "2024"
 rust-version = "1.91"
